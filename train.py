@@ -1,4 +1,4 @@
-from torch.utils.data import DataLoader,random_split
+#from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch
 
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-from dataset import EdfDataset
+from dataset import create_dataloaders
 from network import SleepNet
 from focal_loss import FocalLoss
 
@@ -32,7 +32,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=150)
 parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--seq_len", type=int, default=64)
-parser.add_argument("--network", type=str, default="GRU", help="GRU | LSTM | Attention")
+parser.add_argument("--network", type=str, default="GRU", choices=["GRU", "LSTM", "Attention"], help="GRU | LSTM | Attention")
+parser.add_argument("--bidirectional", action="store_true")
 args = parser.parse_args()
 
 #定义超参数
@@ -41,24 +42,23 @@ batch_size = args.batch_size # 一次加载的数据量，对一个epoch中的�
 learning_rate = 0.001 # 学习率
 seq_len = args.seq_len
 network = args.network
+bidirectional = args.bidirectional
 
 
 #加载数据
-data_path = "./data/sleepedf/npz"
-train_data = EdfDataset(data_path, seq_len=seq_len, is_train=False)
-#按8:2划分训练集和验证集
-train_size = int(len(train_data)*0.8)
-validate_size = len(train_data) - train_size
-train_dataset,validate_dataset = random_split(train_data,[train_size,validate_size])
-#使用DataLoader加载数据集，转换为迭代器
-train_dataloader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
-validate_dataloader = DataLoader(validate_dataset,batch_size=batch_size) #用于训练中验证模型效果，进而可以动态调整超参数，控制训练
+train_dataloader, validate_dataloader, test_dataloader = create_dataloaders(
+    npz_dir="./data/sleepedf/npz",
+    seq_len=seq_len,
+    batch_size=batch_size,
+    num_workers=0,
+    debug=False
+)
 
 #设置设备
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 #加载模型
-model = SleepNet(network=network, seq_len=seq_len)
+model = SleepNet(network=network, seq_len=seq_len, is_bidirectional=bidirectional)
 # model.load_state_dict(torch.load("./models/model_GRU.pt"))
 model.to(device)
 
@@ -69,9 +69,18 @@ optimizer = torch.optim.AdamW(model.parameters(),lr=learning_rate,weight_decay=1
 criterion = FocalLoss(gamma=2.0)
 
 # 学习率调度器，监控验证集loss
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.8, patience=5, verbose=True)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.8, patience=5)
 
 best_acc = -1
+
+import os
+os.makedirs("./models", exist_ok=True)
+
+model_name = f"model_{network}"
+if network == "LSTM" and bidirectional:
+    model_name = "model_BiLSTM"
+
+model_path = f"./models/{model_name}_seq{seq_len}.pt"
 
 #用于记录每个epoch的损失，用于绘图
 train_losses_all = []
@@ -145,21 +154,32 @@ for epoch_idx in range(n_epochs):
 
     if best_acc < validate_acc:
         best_acc = validate_acc
-        print(f"[epoch: {epoch_idx+1:3}/{n_epochs:3}] save best model...")
-        torch.save(model.state_dict(), "./models/model_GRU.pt")
+        print(f"[epoch: {epoch_idx+1:3}/{n_epochs:3}] save best model to {model_path}...")
+        torch.save(model.state_dict(), model_path)
+
+        
+"""
+
 parser = argparse.ArgumentParser(description="Train SleepNet Model")
 
+parser.add_argument("--bidirectional", action="store_true")
 parser.add_argument("--n_epochs", type=int, default=150)
 parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--seq_len", type=int, default=64)
 parser.add_argument("--network", type=str, default="GRU", choices=["GRU", "LSTM", "Attention"])
 args = parser.parse_args()
 
+"""
+
 # 平滑曲线：使用 SciPy spline 插值
 from scipy.interpolate import make_interp_spline
 def smooth_curve(x, y, num_points=300, k=3):
     x = np.array(x)
     y = np.array(y)
+
+    if len(x) <= k:
+        return x, y
+
     spline = make_interp_spline(x, y, k=k)
     x_smooth = np.linspace(x.min(), x.max(), num_points)
     y_smooth = spline(x_smooth)
