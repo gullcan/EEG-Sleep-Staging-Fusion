@@ -141,6 +141,30 @@ N1 Recall Comparison
 N1 F1-score Comparison
 ![N1 F1 Comparison](figures/n1_f1_comparison.png)
 ---
+## Manual Feature Selection Analysis
+
+To further improve interpretability, Random Forest feature importance was used to rank the 35 handcrafted EEG features. Different top-k feature subsets were evaluated using Top 5, Top 10, Top 15, Top 25, and all 35 features.
+
+| Feature Set | Accuracy | Macro F1 | Cohen’s Kappa | N1 F1 |
+|---|---:|---:|---:|---:|
+| Top 5 | 71.61% | 0.5946 | 0.5996 | 0.1431 |
+| Top 10 | 76.37% | 0.6552 | 0.6660 | 0.2090 |
+| Top 15 | **77.61%** | **0.6670** | **0.6832** | **0.2252** |
+| Top 25 | 77.45% | 0.6637 | 0.6803 | 0.2126 |
+| All 35 | 77.28% | 0.6584 | 0.6772 | 0.1955 |
+
+The best feature selection result was obtained with the Top 15 selected manual features. This suggests that not all handcrafted EEG features contribute equally to sleep stage classification. A smaller selected feature subset can provide better performance and improve interpretability.
+
+### Top Manual EEG Features
+
+The most important handcrafted features included spectral entropy, energy, and envelope entropy features from beta, delta, original EEG, theta, and alpha components.
+
+![Manual Feature Importance](figures/manual_feature_importance_top20.png)
+
+### Top-k Feature Selection Performance
+
+![Top-k Feature Selection Comparison](figures/topk_feature_selection_comparison.png)
+---
 N1 Stage Analysis
 The N1 stage was the most difficult class across all models. However, the FusionBiLSTM model improved N1 classification performance.
 Model	N1 F1-score	N1 Recall
